@@ -37,7 +37,22 @@ android {
     }
 }
 
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'org.jetbrains.kotlin' &&
+                ['kotlin-stdlib', 'kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8'].contains(details.requested.name)) {
+            details.useVersion '1.8.22'
+            details.because 'Align Kotlin runtime artifacts to a single version to avoid duplicate class errors.'
+        }
+    }
+}
+
 dependencies {
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.viewpager:viewpager:1.0.0'
     implementation 'com.google.guava:guava:33.0.0-android'
