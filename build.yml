@@ -16,6 +16,7 @@ jobs:
           gradle-version: 8.7
       - name: Arrange flat files into an Android project
         run: |
+          rm -f FaceView.java AppsView.java
           mkdir -p app/src/main/java/com/wearlauncher app/src/main/res/values app/src/main/res/drawable
           mv app_build.gradle app/build.gradle
           mv wear.keystore app/wear.keystore

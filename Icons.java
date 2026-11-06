@@ -133,7 +133,7 @@ public final class Icons {
             float w = getWidth(), h = getHeight();
             float pad = Math.min(w, h) * inset;
             box.set(pad, pad, w - pad, h - pad);
-            draw(canvas, path, box, paint);
+            Icons.draw(canvas, path, box, paint);
         }
     }
 
