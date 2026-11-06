@@ -69,7 +69,7 @@ public class SettingsActivity extends WearActivity {
             case "connectivity": return "Connectivity";
             case "display": return "Display";
             case "brightness": return "Brightness";
-            case "face": return "Watch face";
+            case "home": return "Home screen";
             case "apps": return "Apps & defaults";
             case "touch": return "Gestures";
             case "battery": return "Battery";
@@ -119,19 +119,18 @@ public class SettingsActivity extends WearActivity {
                 break;
             case "display":
                 nav(Icons.BRIGHTNESS, Theme.LIME, "Brightness", null, () -> show("brightness", true));
-                toggle(Icons.CLOCK, Theme.CREAM, "24-hour time", "On the watch face", Store.is24h(this), v -> Store.set24h(this, v));
+                toggle(Icons.CLOCK, Theme.CREAM, "24-hour time", "Clock format", Store.is24h(this), v -> Store.set24h(this, v));
                 toggle(Icons.MOON, Theme.LILAC, "Keep screen on", "Always-on launcher", Store.aod(this), v -> Store.setAod(this, v));
+                toggle(Icons.SUN, Theme.PEACH, "Fahrenheit", "Weather units", Store.fahrenheit(this), v -> Store.setFahrenheit(this, v));
                 break;
             case "brightness": brightness(); break;
-            case "face":
-                for (int i = 0; i < FaceView.FACE_COUNT; i++) {
-                    final int idx = i;
-                    boolean sel = Store.face(this) == i;
-                    LinearLayout row = UiKit.pill(this, sel ? Icons.CHECK : Icons.CLOCK, FaceView.ACCENTS[i],
-                            FaceView.NAMES[i], sel ? "Current" : "Tap to use");
-                    row.setOnClickListener(v -> { Store.setFace(this, idx); show("face", false); });
-                    col.addView(row, lp());
-                }
+            case "home":
+                toggle(Icons.GRID, Theme.BLUE, "Grid view", "Honeycomb app icons", Store.gridView(this), v -> Store.setGridView(this, v));
+                toggle(Icons.PHONE, Theme.MINT, "Hide stock phone apps", "Wear apps replace Dialer, Camera, Gallery...", Store.hideStock(this), v -> Store.setHideStock(this, v));
+                nav(Icons.CLOSE, Theme.PEACH, "Show hidden apps", "Bring back apps you hid", () -> {
+                    Store.clearHidden(this);
+                    android.widget.Toast.makeText(this, "Hidden apps restored", android.widget.Toast.LENGTH_SHORT).show();
+                });
                 break;
             case "apps": apps(); break;
             case "touch":
@@ -140,13 +139,13 @@ public class SettingsActivity extends WearActivity {
             case "battery": battery(); break;
             case "about": about(); break;
             default:
-                nav(Icons.CLOCK, Theme.CREAM, "Watch face", FaceView.NAMES[Store.face(this)], () -> show("face", true));
+                nav(Icons.GRID, Theme.CREAM, "Home screen", "Grid, stock apps", () -> show("home", true));
                 nav(Icons.WIFI, Theme.BLUE, "Connectivity", "Wi-Fi, Bluetooth, Airplane", () -> show("connectivity", true));
                 nav(Icons.BRIGHTNESS, Theme.LIME, "Display", "Brightness, time", () -> show("display", true));
                 nav(Icons.GESTURE, Theme.MINT, "Gestures", "Haptics", () -> show("touch", true));
-                nav(Icons.GRID, Theme.PEACH, "Apps & defaults", "Notifications, default apps", () -> show("apps", true));
+                nav(Icons.APPS_NOTIF, Theme.PEACH, "Apps & defaults", "Notifications, default apps", () -> show("apps", true));
                 nav(Icons.BATTERY, Theme.LIME, "Battery", null, () -> show("battery", true));
-                nav(Icons.INFO, Theme.ROSE, "About", "Wear Launcher 1.0", () -> show("about", true));
+                nav(Icons.INFO, Theme.ROSE, "About", "Wear OS on Android 2.0", () -> show("about", true));
         }
     }
 
@@ -246,7 +245,7 @@ public class SettingsActivity extends WearActivity {
     }
 
     private void about() {
-        nav(Icons.INFO, Theme.ROSE, "Wear Launcher", "Version 1.0", () -> {});
+        nav(Icons.INFO, Theme.ROSE, "Wear OS on Android", "Version 2.0", () -> {});
         nav(Icons.PERSON, Theme.BLUE, "Device", Build.MANUFACTURER + " " + Build.MODEL, () -> {});
         nav(Icons.SETTINGS, Theme.LILAC, "Android", "Version " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")", () -> {});
     }

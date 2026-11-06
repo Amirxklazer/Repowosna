@@ -1,146 +1,112 @@
 package com.wearlauncher;
 
 import android.app.role.RoleManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
-import android.graphics.Color;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.GestureDetector;
-import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
-import android.widget.TextView;
+
+import androidx.core.content.ContextCompat;
 
 /**
- * HOME screen. Watch face in the middle:
- *   swipe down  -> quick settings     swipe up    -> notifications
- *   swipe left  -> tiles              bottom pill -> apps
- *   long press  -> change watch face
+ * HOME screen = Wear OS launcher resized for phones (no watch face).
+ *   swipe down at the top -> quick settings    swipe left  -> tiles
+ *   swipe right           -> notifications     buttons in the top bar do the same
  */
 public class LauncherActivity extends WearActivity implements Host {
     private static final PathInterpolator EASE = new PathInterpolator(0.2f, 0f, 0f, 1f);
-    private static final int DUR = 360;
+    private static final int DUR = 340;
 
     private FrameLayout root;
-    private FaceView face;
-    private LinearLayout dock;
-    private TextView homeHint, faceName;
-    private AppsView apps;
+    private HomeView home;
     private NotificationsView notifs;
     private QuickSettingsView qs;
     private TilesView tiles;
     private String current;
-    private int w, h;
+    private GestureDetector gd;
     private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private final BroadcastReceiver pkgRx = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) { home.reload(); }
+    };
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         root = new FrameLayout(this);
         root.setBackgroundColor(Theme.BG);
 
-        face = new FaceView(this);
-        face.setClickable(true);
-        root.addView(face, new FrameLayout.LayoutParams(-1, -1));
+        home = new HomeView(this, this);
+        root.addView(home, new FrameLayout.LayoutParams(-1, -1));
 
-        faceName = UiKit.text(this, "", 14, Theme.TEXT_DIM, Theme.MEDIUM);
-        faceName.setAlpha(0f);
-        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        flp.topMargin = Theme.dp(this, 96);
-        root.addView(faceName, flp);
-
-        // dock: optional "set as home" pill + the Apps button
-        dock = new LinearLayout(this);
-        dock.setOrientation(LinearLayout.VERTICAL);
-        dock.setGravity(Gravity.CENTER_HORIZONTAL);
-        homeHint = UiKit.bigButton(this, "Set as home app", Theme.SURFACE, Theme.TEXT);
-        homeHint.setTextSize(14);
-        homeHint.setOnClickListener(v -> requestHome());
-        dock.addView(homeHint, new LinearLayout.LayoutParams(-2, -2));
-        TextView appsBtn = UiKit.bigButton(this, "Apps", Theme.BLUE, Theme.ON_PASTEL);
-        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(Theme.dp(this, 200), -2);
-        alp.topMargin = Theme.dp(this, 12);
-        dock.addView(appsBtn, alp);
-        appsBtn.setOnClickListener(v -> openPanel("apps"));
-        FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        dlp.bottomMargin = Theme.dp(this, 28);
-        root.addView(dock, dlp);
-
-        apps = new AppsView(this, this);
         notifs = new NotificationsView(this, this);
         qs = new QuickSettingsView(this, this);
         tiles = new TilesView(this, this);
-        for (View p : new View[]{apps, notifs, qs, tiles}) {
+        for (View p : new View[]{notifs, qs, tiles}) {
             p.setVisibility(View.GONE);
             root.addView(p, new FrameLayout.LayoutParams(-1, -1));
         }
         qs.setSwipeUpListener(this::closePanel);
-        wirePull(notifs.scroller(), notifs);
-        wirePull(apps.scroller(), apps);
-
-        setupFaceGestures();
-        setContentView(root);
-        root.setOnApplyWindowInsetsListener((v, ins) -> {
-            int t = ins.getSystemWindowInsetTop(), bt = ins.getSystemWindowInsetBottom();
-            for (View p : new View[]{apps, notifs, qs, tiles}) p.setPadding(0, t, 0, bt);
-            ((FrameLayout.LayoutParams) dock.getLayoutParams()).bottomMargin = bt + Theme.dp(this, 20);
-            dock.requestLayout();
-            return ins;
-        });
-        root.addOnLayoutChangeListener((v, l, t, r, bo, ol, ot, or, ob) -> { w = r - l; h = bo - t; });
-    }
-
-    private void wirePull(EdgeScrollView sv, View panel) {
-        sv.setPullListener(new EdgeScrollView.PullListener() {
-            @Override public void onPull(float dy) { panel.setTranslationY(dy * 0.9f); }
+        NotifService.onChange = () -> { notifs.rebuild(); home.setBadge(NotifService.count); };
+        notifs.scroller().setPullListener(new EdgeScrollView.PullListener() {
+            @Override public void onPull(float dy) { notifs.setTranslationY(dy * 0.9f); }
             @Override public void onRelease(float dy) {
                 if (dy > Theme.dp(LauncherActivity.this, 110)) closePanel();
-                else panel.animate().translationY(0).setDuration(220).setInterpolator(EASE).start();
+                else notifs.animate().translationY(0).setDuration(220).setInterpolator(EASE).start();
             }
         });
-    }
 
-    private void setupFaceGestures() {
-        final int dist = Theme.dp(this, 70);
-        final GestureDetector gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override public boolean onDown(MotionEvent e) { return true; }
-
-            @Override public boolean onFling(MotionEvent a, MotionEvent b, float vx, float vy) {
-                if (a == null || b == null) return false;
-                float dx = b.getX() - a.getX(), dy = b.getY() - a.getY();
-                if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > dist) {
-                    openPanel(dy > 0 ? "qs" : "notifs");
+        gd = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override public boolean onFling(MotionEvent a, MotionEvent e, float vx, float vy) {
+                if (a == null || e == null || current != null) return false;
+                float dx = e.getX() - a.getX(), dy = e.getY() - a.getY();
+                int dist = Theme.dp(LauncherActivity.this, 90);
+                if (Math.abs(dx) > dist && Math.abs(dx) > 2.2f * Math.abs(dy) && Math.abs(vx) > 1100) {
+                    openPanel(dx < 0 ? "tiles" : "notifs");
                     return true;
                 }
-                if (Math.abs(dx) > dist) {
-                    if (dx < 0) openPanel("tiles");
+                if (dy > Theme.dp(LauncherActivity.this, 110) && dy > 2f * Math.abs(dx) && vy > 1400
+                        && a.getY() < Theme.dp(LauncherActivity.this, 220) + insetTop && !home.canScrollUp()) {
+                    openPanel("qs");
                     return true;
                 }
                 return false;
             }
-
-            @Override public void onLongPress(MotionEvent e) {
-                face.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-                face.setFace(face.getFace() + 1);
-                faceName.setText(FaceView.NAMES[face.getFace()]);
-                faceName.animate().cancel();
-                faceName.setAlpha(1f);
-                faceName.animate().alpha(0f).setStartDelay(1100).setDuration(400).start();
-            }
         });
-        face.setOnTouchListener((v, e) -> gd.onTouchEvent(e));
+
+        setRoot(root);
+
+        IntentFilter f = new IntentFilter();
+        f.addAction(Intent.ACTION_PACKAGE_ADDED);
+        f.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        f.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        f.addDataScheme("package");
+        ContextCompat.registerReceiver(this, pkgRx, f, ContextCompat.RECEIVER_EXPORTED);
     }
 
-    // ---------- panel management ----------
+    @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (gd != null) gd.onTouchEvent(ev);
+        return super.dispatchTouchEvent(ev);
+    }
+
+    @Override protected void onDestroy() {
+        try { unregisterReceiver(pkgRx); } catch (Exception ignored) {}
+        super.onDestroy();
+    }
+
+    // ---------- panels ----------
     private View panel(String n) {
         switch (n) {
-            case "apps": return apps;
             case "notifs": return notifs;
             case "qs": return qs;
             default: return tiles;
@@ -148,22 +114,21 @@ public class LauncherActivity extends WearActivity implements Host {
     }
 
     @Override public void openPanel(String name) {
+        if ("apps".equals(name)) { closePanel(); home.scrollToApps(); return; }
         if (name.equals(current)) return;
-        if (current != null) hideNow(panel(current));
+        if (current != null) { View old = panel(current); old.animate().cancel(); old.setVisibility(View.GONE); }
         View p = panel(name);
-        if (name.equals("apps")) apps.open();
-        else if (name.equals("qs")) qs.refresh();
+        if (name.equals("qs")) qs.refresh();
         else if (name.equals("notifs")) { notifs.rebuild(); notifs.scroller().scrollTo(0, 0); }
         else tiles.reset();
         if (Store.haptics(this)) root.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-        float W = w == 0 ? root.getWidth() : w, H = h == 0 ? root.getHeight() : h;
+        float W = Math.max(1, root.getWidth()), H = Math.max(1, root.getHeight());
         p.setVisibility(View.VISIBLE);
         p.setAlpha(1f);
-        p.setTranslationX(name.equals("tiles") ? W : 0);
-        p.setTranslationY(name.equals("tiles") ? 0 : (name.equals("qs") ? -H : H));
+        p.setTranslationX(name.equals("tiles") ? W : (name.equals("notifs") ? -W : 0));
+        p.setTranslationY(name.equals("qs") ? -H : 0);
         p.animate().translationX(0).translationY(0).setDuration(DUR).setInterpolator(EASE).setListener(null).start();
-        face.animate().scaleX(0.92f).scaleY(0.92f).alpha(0.35f).setDuration(DUR).setInterpolator(EASE).start();
-        dock.animate().alpha(0f).setDuration(200).start();
+        home.animate().scaleX(0.94f).scaleY(0.94f).alpha(0.3f).setDuration(DUR).setInterpolator(EASE).start();
         current = name;
     }
 
@@ -172,18 +137,12 @@ public class LauncherActivity extends WearActivity implements Host {
         final View p = panel(current);
         final String name = current;
         current = null;
-        float W = root.getWidth(), H = root.getHeight();
-        p.animate().translationX(name.equals("tiles") ? W : 0)
-                .translationY(name.equals("tiles") ? 0 : (name.equals("qs") ? -H : H))
-                .setDuration(280).setInterpolator(EASE)
+        float W = Math.max(1, root.getWidth()), H = Math.max(1, root.getHeight());
+        p.animate().translationX(name.equals("tiles") ? W : (name.equals("notifs") ? -W : 0))
+                .translationY(name.equals("qs") ? -H : 0)
+                .setDuration(260).setInterpolator(EASE)
                 .withEndAction(() -> { if (!name.equals(current)) p.setVisibility(View.GONE); }).start();
-        face.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(280).setInterpolator(EASE).start();
-        dock.animate().alpha(1f).setStartDelay(120).setDuration(220).start();
-    }
-
-    private void hideNow(View p) {
-        p.animate().cancel();
-        p.setVisibility(View.GONE);
+        home.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(260).setInterpolator(EASE).start();
     }
 
     @Override public void startApp(Intent i) {
@@ -194,14 +153,12 @@ public class LauncherActivity extends WearActivity implements Host {
         } catch (Exception e) {
             android.widget.Toast.makeText(this, "Can't open that", android.widget.Toast.LENGTH_SHORT).show();
         }
-        // slide everything away behind the launched app
         handler.postDelayed(() -> {
             if (current != null) {
                 View p = panel(current);
                 p.setVisibility(View.GONE);
                 current = null;
-                face.setScaleX(1f); face.setScaleY(1f); face.setAlpha(1f);
-                dock.setAlpha(1f);
+                home.setScaleX(1f); home.setScaleY(1f); home.setAlpha(1f);
             }
         }, 350);
     }
@@ -215,7 +172,7 @@ public class LauncherActivity extends WearActivity implements Host {
         return false;
     }
 
-    private void requestHome() {
+    @Override public void requestHome() {
         try {
             if (Build.VERSION.SDK_INT >= 29) {
                 RoleManager rm = (RoleManager) getSystemService(ROLE_SERVICE);
@@ -224,28 +181,30 @@ public class LauncherActivity extends WearActivity implements Host {
                 startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS));
             }
         } catch (Exception e) {
-            startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS));
+            try { startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS)); } catch (Exception ignored) {}
         }
     }
 
     // ---------- lifecycle ----------
     @Override protected void onResume() {
         super.onResume();
-        homeHint.setVisibility(isDefaultHome() ? View.GONE : View.VISIBLE);
+        home.setShowBanner(!isDefaultHome());
+        home.setBadge(NotifService.count);
+        home.refresh();
         if (Store.aod(this)) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        face.invalidate();
     }
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // Home pressed again: return to the watch face.
-        if (Intent.ACTION_MAIN.equals(intent.getAction())) closePanel();
+        if (Intent.ACTION_MAIN.equals(intent.getAction())) {
+            closePanel();
+            home.onBack();
+        }
     }
 
     @Override public void onBackPressed() {
-        if (current == null) return;                 // we are home; nothing to go back to
-        if (current.equals("apps") && apps.onBack()) return;
-        closePanel();
+        if (current != null) { closePanel(); return; }
+        home.onBack();
     }
 }

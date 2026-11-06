@@ -1,0 +1,31 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - name: Arrange flat files into an Android project
+        run: |
+          mkdir -p app/src/main/java/com/wearlauncher app/src/main/res/values app/src/main/res/drawable
+          mv app_build.gradle app/build.gradle
+          mv wear.keystore app/wear.keystore
+          mv AndroidManifest.xml app/src/main/AndroidManifest.xml
+          mv themes.xml app/src/main/res/values/themes.xml
+          mv ic_launcher.xml app/src/main/res/drawable/ic_launcher.xml
+          mv *.java app/src/main/java/com/wearlauncher/
+      - name: Build
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WearOS-on-Android-v2
+          path: app/build/outputs/apk/debug/app-debug.apk

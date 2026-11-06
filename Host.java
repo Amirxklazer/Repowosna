@@ -7,4 +7,5 @@ public interface Host {
     void closePanel();
     void startApp(Intent intent);
     void openPanel(String name);
+    default void requestHome() {}
 }
