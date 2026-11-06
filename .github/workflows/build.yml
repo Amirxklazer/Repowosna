@@ -1,42 +1,31 @@
-name: Build Wear Launcher
-
+name: Build APK
 on:
   push:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Sort flat files into Android folders
-        shell: bash
-        run: |
-          set -e
-          J=app/src/main/java/com/wearlauncher
-          mkdir -p "$J" app/src/main/res/values app/src/main/res/drawable
-          for f in *.java; do [ -f "$f" ] && mv "$f" "$J/"; done
-          [ -f AndroidManifest.xml ] && mv AndroidManifest.xml app/src/main/
-          [ -f themes.xml ] && mv themes.xml app/src/main/res/values/
-          [ -f ic_launcher.xml ] && mv ic_launcher.xml app/src/main/res/drawable/
-          [ -f app_build.gradle ] && mv app_build.gradle app/build.gradle
-          [ -f wear.keystore ] && mv wear.keystore app/wear.keystore
-          find app -type f | sort
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
-
+          java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.9
-
-      - name: Build APK
-        run: gradle assembleDebug --stacktrace
-
+          gradle-version: 8.7
+      - name: Arrange flat files into an Android project
+        run: |
+          mkdir -p app/src/main/java/com/wearlauncher app/src/main/res/values app/src/main/res/drawable
+          mv app_build.gradle app/build.gradle
+          mv wear.keystore app/wear.keystore
+          mv AndroidManifest.xml app/src/main/AndroidManifest.xml
+          mv themes.xml app/src/main/res/values/themes.xml
+          mv ic_launcher.xml app/src/main/res/drawable/ic_launcher.xml
+          mv *.java app/src/main/java/com/wearlauncher/
+      - name: Build
+        run: gradle assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: WearLauncher-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: WearOS-on-Android-v2
+          path: app/build/outputs/apk/debug/app-debug.apk
